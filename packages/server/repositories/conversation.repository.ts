@@ -1,12 +1,46 @@
-// Implementation detail
-const conversations = new Map<string, string>();
+export type ConversationMessage = {
+   role: 'user' | 'assistant';
+   content: string;
+   ts: number;
+};
+
+const histories = new Map<string, ConversationMessage[]>();
+const lastResponseIds = new Map<string, string>();
+
+const maxMessages = Number(process.env.CONVERSATION_MAX_MESSAGES ?? 24);
+
+function trimHistory(messages: ConversationMessage[]) {
+   if (messages.length <= maxMessages) return messages;
+   return messages.slice(messages.length - maxMessages);
+}
 
 export const conversationRepository = {
-   getLastResponseId(conversationId: string) {
-      return conversations.get(conversationId);
+   getHistory(conversationId: string): ConversationMessage[] {
+      return histories.get(conversationId) ?? [];
    },
 
+   appendMessage(
+      conversationId: string,
+      role: 'user' | 'assistant',
+      content: string
+   ) {
+      const existing = histories.get(conversationId) ?? [];
+      histories.set(
+         conversationId,
+         trimHistory([...existing, { role, content, ts: Date.now() }])
+      );
+   },
+
+   clear(conversationId: string) {
+      histories.delete(conversationId);
+      lastResponseIds.delete(conversationId);
+   },
+
+   // Backward compat (old OpenAI responses flow)
+   getLastResponseId(conversationId: string) {
+      return lastResponseIds.get(conversationId);
+   },
    setLastResponseId(conversationId: string, responseId: string) {
-      conversations.set(conversationId, responseId);
+      lastResponseIds.set(conversationId, responseId);
    },
 };

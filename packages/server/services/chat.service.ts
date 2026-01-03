@@ -1,14 +1,16 @@
 import fs from 'fs';
 import path from 'path';
 import { conversationRepository } from '../repositories/conversation.repository';
-import template from '../llm/prompts/chatbot.txt';
 import { llmClient } from '../llm/client';
 
-const parkInfo = fs.readFileSync(
-   path.join(__dirname, '..', 'llm', 'prompts', 'WonderWorld.md'),
-   'utf-8'
-);
-const instructions = template.replace('{{parkInfo}}', parkInfo);
+// --- Load NutriFit instructions once (module load) ---
+const promptsDir = path.resolve(process.cwd(), 'llm', 'prompts');
+const appInfoPath = path.join(promptsDir, 'NutriFit.md');
+const systemTemplatePath = path.join(promptsDir, 'nutrifit_chatbot.txt');
+
+const appInfo = fs.readFileSync(appInfoPath, 'utf-8');
+const systemTemplate = fs.readFileSync(systemTemplatePath, 'utf-8');
+const instructions = systemTemplate.replaceAll('{{appInfo}}', appInfo);
 
 type ChatResponse = {
    id: string;
@@ -26,7 +28,7 @@ export const chatService = {
          instructions,
          prompt,
          temperature: 0.2,
-         maxTokens: 200,
+         maxTokens: 1500,
          previousResponseId:
             conversationRepository.getLastResponseId(conversationId),
       });
