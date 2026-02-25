@@ -18,6 +18,8 @@
    "dependencies": {
       "@huggingface/inference": "^4.7.1",
       "@prisma/client": "^6.13.0",
+      "@types/cors": "^2.8.19",
+      "cors": "^2.8.5",
       "dayjs": "^1.11.13",
       "dotenv": "^17.2.2",
       "express": "^5.1.0",

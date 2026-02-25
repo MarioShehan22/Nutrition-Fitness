@@ -35,7 +35,8 @@ The database includes local foods with per-serving calories and macros, e.g.:
 - Rice with chicken/fish/dhal/mallum, polos curry, red rice
 - Kottu (veg/chicken), fried rice, string hopper biriyani
 - Snacks: chickpeas, peanuts, curd with treacle, fruit bowl, tea, lime juice
-  Each item may carry tags such as **high_sugar, high_salt, deep_fried, diabetic_safe, heart_friendly, contains_milk, contains_nuts, very_spicy**.
+
+Each item may carry tags such as **high_sugar, high_salt, deep_fried, diabetic_safe, heart_friendly, contains_milk, contains_nuts, very_spicy**.
 
 ---
 

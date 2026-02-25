@@ -1,33 +1,40 @@
-import type { Request, Response } from 'express';
+import type { RequestHandler } from 'express';
 import { chatService } from '../services/chat.service';
 import z from 'zod';
 
-// Implementation detail
 const chatSchema = z.object({
    prompt: z
       .string()
       .trim()
       .min(1, 'Prompt is required.')
-      .max(1000, 'Prompt is too long (max 1000 characters'),
-   conversationId: z.string().uuid(),
+      .max(1000, 'Prompt is too long (max 1000 characters)'),
+   conversationId: z.string().uuid().optional(),
 });
 
-// Public interface
-export const chatController = {
-   async sendMessage(req: Request, res: Response) {
-      const parseResult = chatSchema.safeParse(req.body);
-      if (!parseResult.success) {
-         res.status(400).json(parseResult.error.format());
-         return;
-      }
+const newId = () => globalThis.crypto?.randomUUID?.() ?? String(Date.now());
 
-      try {
-         const { prompt, conversationId } = req.body;
-         const response = await chatService.sendMessage(prompt, conversationId);
+export const sendMessage: RequestHandler = async (req, res) => {
+   const parsed = chatSchema.safeParse(req.body);
 
-         res.json({ message: response.message });
-      } catch (error) {
-         res.status(500).json({ error: 'Failed to generate a response.' });
-      }
-   },
+   if (!parsed.success) {
+      res.status(400).json({ errors: parsed.error.flatten() });
+      return;
+   }
+
+   try {
+      const { prompt, conversationId } = parsed.data;
+      const convId = conversationId ?? newId();
+
+      const response = await chatService.sendMessage(prompt, convId);
+
+      res.status(200).json({
+         id: response.id,
+         message: response.message,
+         conversationId: convId,
+      });
+      return;
+   } catch {
+      res.status(500).json({ error: 'Failed to generate a response.' });
+      return;
+   }
 };

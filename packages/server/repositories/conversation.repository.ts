@@ -1,5 +1,5 @@
 export type ConversationMessage = {
-   role: 'user' | 'assistant';
+   role: 'user' | 'assistant' | 'system';
    content: string;
    ts: number;
 };
@@ -11,7 +11,7 @@ const maxMessages = Number(process.env.CONVERSATION_MAX_MESSAGES ?? 24);
 
 function trimHistory(messages: ConversationMessage[]) {
    if (messages.length <= maxMessages) return messages;
-   return messages.slice(messages.length - maxMessages);
+   return messages.slice(-maxMessages);
 }
 
 export const conversationRepository = {
@@ -21,7 +21,7 @@ export const conversationRepository = {
 
    appendMessage(
       conversationId: string,
-      role: 'user' | 'assistant',
+      role: ConversationMessage['role'],
       content: string
    ) {
       const existing = histories.get(conversationId) ?? [];
@@ -36,7 +36,7 @@ export const conversationRepository = {
       lastResponseIds.delete(conversationId);
    },
 
-   // Backward compat (old OpenAI responses flow)
+   // OpenAI Responses threading (optional)
    getLastResponseId(conversationId: string) {
       return lastResponseIds.get(conversationId);
    },
