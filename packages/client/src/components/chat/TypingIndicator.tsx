@@ -1,21 +1,20 @@
-const TypingIndicator = () => {
+export default function TypingIndicator() {
    return (
-      <div className="flex self-start gap-1 px-3 py-3 bg-gray-200 rounded-xl">
+      <div className="flex w-fit items-center gap-1 self-start rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
          <Dot />
-         <Dot className="[animation-delay:0.2s]" />
-         <Dot className="[animation-delay:0.4s]" />
+         <Dot className="[animation-delay:0.15s]" />
+         <Dot className="[animation-delay:0.3s]" />
       </div>
    );
-};
+}
 
-type DotProps = {
-   className?: string;
-};
-
-const Dot = ({ className }: DotProps) => (
-   <div
-      className={`w-2 h-2 rounded-full bg-gray-800 animate-pulse ${className}`}
-   ></div>
-);
-
-export default TypingIndicator;
+function Dot({ className }: { className?: string }) {
+   return (
+      <span
+         className={[
+            'h-2 w-2 animate-bounce rounded-full bg-slate-400',
+            className ?? '',
+         ].join(' ')}
+      />
+   );
+}

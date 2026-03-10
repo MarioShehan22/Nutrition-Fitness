@@ -10,7 +10,7 @@ type Props = {
    messages: Message[];
 };
 
-const ChatMessages = ({ messages }: Props) => {
+export default function ChatMessages({ messages }: Props) {
    const lastMessageRef = useRef<HTMLDivElement | null>(null);
 
    useEffect(() => {
@@ -27,22 +27,26 @@ const ChatMessages = ({ messages }: Props) => {
 
    return (
       <div className="flex flex-col gap-3">
-         {messages.map((message, index) => (
-            <div
-               key={index}
-               onCopy={onCopyMessage}
-               ref={index === messages.length - 1 ? lastMessageRef : null}
-               className={`px-3 py-1 max-w-md rounded-xl prose ${
-                  message.role === 'user'
-                     ? 'bg-blue-600 text-white self-end'
-                     : 'bg-gray-100 text-black self-start'
-               }`}
-            >
-               <ReactMarkdown>{message.content}</ReactMarkdown>
-            </div>
-         ))}
+         {messages.map((message, index) => {
+            const isUser = message.role === 'user';
+
+            return (
+               <div
+                  key={`${message.role}-${index}`}
+                  onCopy={onCopyMessage}
+                  ref={index === messages.length - 1 ? lastMessageRef : null}
+                  className={[
+                     'max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
+                     'prose prose-sm prose-p:my-0 prose-ul:my-2 prose-ol:my-2',
+                     isUser
+                        ? 'self-end bg-slate-900 text-white prose-invert'
+                        : 'self-start bg-white text-slate-900 border border-slate-200',
+                  ].join(' ')}
+               >
+                  <ReactMarkdown>{message.content}</ReactMarkdown>
+               </div>
+            );
+         })}
       </div>
    );
-};
-
-export default ChatMessages;
+}

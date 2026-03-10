@@ -1,8 +1,9 @@
-import type { Request, Response } from 'express';
-import z from 'zod';
+import type { RequestHandler } from 'express';
+import { z } from 'zod';
+import mongoose from 'mongoose';
+
 import { planService } from '../services/plan.service';
 import { planRepository } from '../repositories/plan.repository';
-import mongoose from 'mongoose';
 
 const MacroRatiosSchema = z
    .object({
@@ -36,27 +37,28 @@ const GoalSchema = z.object({
 });
 
 export const requirementSchema = z.preprocess(
-   (input: any) => {
+   (input: unknown) => {
       if (!input || typeof input !== 'object') return input;
 
-      // string -> object
-      if (typeof input.goal === 'string') {
-         input.goal = { type: input.goal };
+      const obj = input as Record<string, any>;
+
+      if (typeof obj.goal === 'string') {
+         obj.goal = { type: obj.goal };
       }
 
-      if (input.preferredMeals && !input.goal?.preferredMeals) {
-         input.goal = {
-            ...(input.goal || {}),
-            preferredMeals: input.preferredMeals,
+      if (obj.preferredMeals && !obj.goal?.preferredMeals) {
+         obj.goal = {
+            ...(obj.goal || {}),
+            preferredMeals: obj.preferredMeals,
          };
       }
 
-      if (input.goal?.calorieTargetPerDay != null) {
-         const v = Math.round(Number(input.goal.calorieTargetPerDay));
-         input.goal.calorieTargetPerDay = Math.max(1200, Math.min(3500, v));
+      if (obj.goal?.calorieTargetPerDay != null) {
+         const v = Math.round(Number(obj.goal.calorieTargetPerDay));
+         obj.goal.calorieTargetPerDay = Math.max(1200, Math.min(3500, v));
       }
 
-      return input;
+      return obj;
    },
    z.object({
       userId: z.string().optional(),
@@ -73,82 +75,130 @@ export const requirementSchema = z.preprocess(
    })
 );
 
-function normalizeRequirement<T extends z.infer<typeof requirementSchema>>(
-   data: T
-) {
-   const out = { ...data } as any;
-   if (out.preferredMeals) {
-      out.goal = { ...(out.goal || {}), preferredMeals: out.preferredMeals };
-      delete out.preferredMeals;
+type RequirementInput = z.infer<typeof requirementSchema>;
+
+function normalizeRequirement(data: RequirementInput): RequirementInput {
+   const out = { ...data } as RequirementInput & {
+      preferredMeals?: unknown;
+      goal?: RequirementInput['goal'];
+   };
+
+   if ('preferredMeals' in out && out.preferredMeals) {
+      out.goal = {
+         ...(out.goal || { type: 'maintenance' }),
+         preferredMeals:
+            out.preferredMeals as RequirementInput['goal']['preferredMeals'],
+      };
+      delete (out as { preferredMeals?: unknown }).preferredMeals;
    }
-   return out as T;
+
+   return out;
 }
 
-export const planController = {
-   async createRequirements(req: Request, res: Response) {
-      const parsed = requirementSchema.safeParse(req.body);
-      if (!parsed.success)
-         return res.status(400).json({ errors: parsed.error.flatten() });
+const createRequirements: RequestHandler = async (req, res) => {
+   const parsed = requirementSchema.safeParse(req.body);
 
-      const body = normalizeRequirement(parsed.data);
-      const doc = await planService.saveRequirements(body);
-      return res.json({ requirementId: String(doc._id), requirement: doc });
-   },
+   if (!parsed.success) {
+      res.status(400).json({ errors: parsed.error.flatten() });
+      return;
+   }
 
-   async generatePlan(req: Request, res: Response) {
-      const parsed = requirementSchema.safeParse(req.body);
-      if (!parsed.success)
-         return res.status(400).json({ errors: parsed.error.flatten() });
+   const body = normalizeRequirement(parsed.data);
+   const doc = await planService.saveRequirements(body);
 
-      try {
-         const requirement = await planService.saveRequirements(
-            normalizeRequirement(parsed.data)
-         );
-         const plan = await planService.generateAndSavePlan(requirement);
-         return res
-            .status(201)
-            .json({
-               requirementId: String(requirement._id),
-               planId: String(plan._id),
-               plan,
-            });
-      } catch (e: any) {
-         const status = e?.status ?? e?.response?.status;
-         const code = e?.code ?? e?.error?.code;
-         const msg = e?.error?.message ?? e?.message ?? String(e);
-
-         // Insufficient quota / rate limit
-         if (status === 429) {
-            return res.status(429).json({
-               error: 'OpenAI request blocked (quota/rate limit)',
-               code: code ?? 'rate_limit_or_quota',
-               detail: msg,
-            });
-         }
-
-         return res
-            .status(502)
-            .json({ error: 'Failed to generate nutrition plan', detail: msg });
-      }
-   },
-
-   async getPlan(req: Request, res: Response) {
-      const id = req.params?.id;
-      if (!id) return res.status(400).json({ error: 'Missing plan id' });
-      if (!mongoose.Types.ObjectId.isValid(id))
-         return res.status(400).json({ error: 'Invalid plan id format' });
-
-      const plan = await planRepository.getPlan(id);
-      if (!plan) return res.status(404).json({ error: 'Plan not found' });
-      return res.json(plan);
-   },
-
-   async listPlans(req: Request, res: Response) {
-      const userId = req.query.userId;
-      if (typeof userId !== 'string' || !userId.trim()) {
-         return res.status(400).json({ error: 'userId query param required' });
-      }
-      const plans = await planRepository.listPlansByUser(userId);
-      return res.json(plans);
-   },
+   res.json({ requirementId: String(doc._id), requirement: doc });
 };
+
+const generatePlan: RequestHandler = async (req, res) => {
+   const parsed = requirementSchema.safeParse(req.body);
+
+   if (!parsed.success) {
+      res.status(400).json({ errors: parsed.error.flatten() });
+      return;
+   }
+
+   try {
+      const requirement = await planService.saveRequirements(
+         normalizeRequirement(parsed.data)
+      );
+
+      const plan = await planService.generateAndSavePlan(requirement);
+
+      res.status(201).json({
+         requirementId: String(requirement._id),
+         planId: String(plan._id),
+         plan,
+      });
+      return;
+   } catch (e: unknown) {
+      const err = e as {
+         status?: number;
+         response?: { status?: number };
+         code?: string;
+         error?: { code?: string; message?: string };
+         message?: string;
+      };
+
+      const status = err?.status ?? err?.response?.status;
+      const code = err?.code ?? err?.error?.code;
+      const msg = err?.error?.message ?? err?.message ?? String(e);
+
+      if (status === 429) {
+         res.status(429).json({
+            error: 'OpenAI request blocked (quota/rate limit)',
+            code: code ?? 'rate_limit_or_quota',
+            detail: msg,
+         });
+         return;
+      }
+
+      res.status(502).json({
+         error: 'Failed to generate nutrition plan',
+         detail: msg,
+      });
+   }
+};
+
+const getPlan: RequestHandler = async (req, res) => {
+   const id = req.params.id;
+
+   if (!id) {
+      res.status(400).json({ error: 'Missing plan id' });
+      return;
+   }
+
+   if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({ error: 'Invalid plan id format' });
+      return;
+   }
+
+   const plan = await planRepository.getPlan(id);
+
+   if (!plan) {
+      res.status(404).json({ error: 'Plan not found' });
+      return;
+   }
+
+   res.json(plan);
+};
+
+const listPlans: RequestHandler = async (req, res) => {
+   const userId = req.query.userId;
+
+   if (typeof userId !== 'string' || !userId.trim()) {
+      res.status(400).json({ error: 'userId query param required' });
+      return;
+   }
+
+   const plans = await planRepository.listPlansByUser(userId);
+   res.json(plans);
+};
+
+const planController = {
+   listPlans,
+   getPlan,
+   generatePlan,
+   createRequirements,
+};
+
+export default planController;

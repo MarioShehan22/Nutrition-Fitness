@@ -14,20 +14,21 @@ const SLOT_LIST: MealSlot[] = [
 ];
 
 function assertDate(date: string) {
-   // YYYY-MM-DD
    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       throw new Error('Invalid date format. Use YYYY-MM-DD.');
    }
 }
 
-function computeAdherence(log: any) {
+function computeAdherence(log: any | null | undefined) {
    const doneCount = SLOT_LIST.filter(
       (s) => log?.meals?.[s]?.status === 'done'
    ).length;
+
    const mealAdherence = Math.round((doneCount / SLOT_LIST.length) * 100);
 
    const totalMl = Number(log?.water?.totalMl ?? 0);
    const targetMl = Number(log?.water?.targetMl ?? 2000);
+
    const waterAdherence =
       targetMl > 0 ? Math.min(100, Math.round((totalMl / targetMl) * 100)) : 0;
 
@@ -57,12 +58,11 @@ async function buildPlannedMealsFromActivePlan(userId: string) {
 }
 
 export const dailyLogService = {
-   // Create daily log if not exists, and auto-fill planned meals from active plan
    async ensureDailyLog(userId: string, date: string) {
       assertDate(date);
 
-      // If already exists, return it
       const existing = await DailyLog.findOne({ userId, date });
+
       if (existing) {
          const needsMeals = !existing.get('meals');
          const needsWater = !existing.get('water');
@@ -114,13 +114,17 @@ export const dailyLogService = {
                   },
                }
             );
-            return await DailyLog.findById(existing._id);
+
+            const updated = await DailyLog.findById(existing._id);
+            if (!updated) {
+               throw new Error('Failed to load daily log after update.');
+            }
+            return updated;
          }
 
          return existing;
       }
 
-      // Build plan-based defaults for today
       const planData = await buildPlannedMealsFromActivePlan(userId);
 
       const insertDoc: any = {
@@ -150,18 +154,49 @@ export const dailyLogService = {
          }
       }
 
-      // Use upsert in case a race condition creates it between check and insert
       const doc = await DailyLog.findOneAndUpdate(
          { userId, date },
          { $setOnInsert: insertDoc },
          { upsert: true, new: true }
       );
 
+      if (!doc) {
+         throw new Error('Failed to create or load daily log.');
+      }
+
       return doc;
    },
 
    async getDailyLog(userId: string, date: string) {
       const log = await this.ensureDailyLog(userId, date);
+      const adherence = computeAdherence(log);
+      return { log, adherence };
+   },
+
+   async addManualEntries(userId: string, date: string, entries: any[]) {
+      assertDate(date);
+
+      const log = await this.ensureDailyLog(userId, date);
+      if (!log) {
+         throw new Error('Daily log not found.');
+      }
+
+      const existing = Array.isArray((log as any).manualEntries)
+         ? (log as any).manualEntries
+         : [];
+
+      (log as any).manualEntries = [...existing, ...entries];
+
+      const addCalories = entries.reduce(
+         (s, e) => s + Number(e.calories || 0),
+         0
+      );
+
+      (log as any).totalCalories =
+         Number((log as any).totalCalories || 0) + addCalories;
+
+      await log.save();
+
       const adherence = computeAdherence(log);
       return { log, adherence };
    },
@@ -179,17 +214,25 @@ export const dailyLogService = {
       await this.ensureDailyLog(input.userId, input.date);
 
       const update: any = {};
-      if (input.consumed)
+      if (input.consumed) {
          update[`meals.${input.slot}.consumed`] = input.consumed;
-      if (input.status) update[`meals.${input.slot}.status`] = input.status;
-      if (typeof input.notes === 'string')
+      }
+      if (input.status) {
+         update[`meals.${input.slot}.status`] = input.status;
+      }
+      if (typeof input.notes === 'string') {
          update[`meals.${input.slot}.notes`] = input.notes;
+      }
 
       const log = await DailyLog.findOneAndUpdate(
          { userId: input.userId, date: input.date },
          { $set: update },
          { new: true }
       );
+
+      if (!log) {
+         throw new Error('Failed to update meal slot.');
+      }
 
       const adherence = computeAdherence(log);
       return { log, adherence };
@@ -199,9 +242,12 @@ export const dailyLogService = {
       assertDate(input.date);
 
       const ml = Number(input.ml);
-      if (!Number.isFinite(ml) || ml <= 0)
+      if (!Number.isFinite(ml) || ml <= 0) {
          throw new Error('ml must be a positive number.');
-      if (ml > 2000) throw new Error('ml too high for a single entry.');
+      }
+      if (ml > 2000) {
+         throw new Error('ml too high for a single entry.');
+      }
 
       await this.ensureDailyLog(input.userId, input.date);
 
@@ -213,6 +259,10 @@ export const dailyLogService = {
          },
          { new: true }
       );
+
+      if (!log) {
+         throw new Error('Failed to add water entry.');
+      }
 
       const adherence = computeAdherence(log);
       return { log, adherence };
@@ -237,6 +287,10 @@ export const dailyLogService = {
          { $set: { 'water.targetMl': targetMl } },
          { new: true }
       );
+
+      if (!log) {
+         throw new Error('Failed to update water target.');
+      }
 
       const adherence = computeAdherence(log);
       return { log, adherence };

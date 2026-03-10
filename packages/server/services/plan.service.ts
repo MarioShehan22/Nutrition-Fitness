@@ -83,7 +83,7 @@ export const planService = {
             model,
             instructions: process.env.NUTRIFIT_INSTRUCTIONS || '',
             prompt,
-            maxTokens: 700, // lower cost
+            maxTokens: 700,
          });
       } catch (e: any) {
          const status = e?.status ?? e?.response?.status;

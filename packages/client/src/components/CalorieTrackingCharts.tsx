@@ -13,27 +13,10 @@ import {
    ReferenceLine,
    Cell,
 } from 'recharts';
-
-type DayRow = {
-   date: string;
-   target: number;
-   consumed: number;
-   delta: number; // consumed - target (negative = under)
-   status: 'under' | 'over' | 'ok';
-   suggestedAdjustment?: string;
-};
-
-type Payload = {
-   mode: string;
-   tolerance: number;
-   baseTarget: number;
-   startDate: string;
-   endDate: string;
-   series: DayRow[];
-};
+import type { ProgressPayload } from '../pages/ProgressPage';
 
 type Props = {
-   data: Payload;
+   data: ProgressPayload;
 };
 
 const formatDate = (iso: string) => {
@@ -52,11 +35,27 @@ export default function CalorieTrackingCharts({ data }: Props) {
    }, [data.series]);
 
    return (
-      <div style={{ width: '100%', display: 'grid', gap: 24 }}>
-         {/* ✅ Comparison chart */}
-         <div>
-            <h3 style={{ margin: '0 0 10px' }}>Target vs Consumed</h3>
-            <div style={{ width: '100%', height: 360 }}>
+      <div className="grid gap-8">
+         {/* Target vs Consumed */}
+         <section>
+            <div className="flex items-end justify-between gap-3">
+               <div>
+                  <h3 className="text-lg font-semibold text-slate-900">
+                     Target vs Consumed
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-600">
+                     Compare your daily target with what you consumed.
+                  </p>
+               </div>
+               <div className="text-xs text-slate-500">
+                  Mode:{' '}
+                  <span className="font-semibold text-slate-900">
+                     {data.mode}
+                  </span>
+               </div>
+            </div>
+
+            <div className="mt-4 h-[360px] w-full">
                <ResponsiveContainer>
                   <LineChart
                      data={chartData}
@@ -71,11 +70,10 @@ export default function CalorieTrackingCharts({ data }: Props) {
                      />
                      <Legend />
 
-                     {/* ✅ TWO COLORS */}
                      <Line
                         type="monotone"
                         dataKey="target"
-                        stroke="#1f77b4" // blue
+                        stroke="#1f77b4"
                         strokeWidth={2}
                         dot={false}
                         name="Target"
@@ -83,7 +81,7 @@ export default function CalorieTrackingCharts({ data }: Props) {
                      <Line
                         type="monotone"
                         dataKey="consumed"
-                        stroke="#ff7f0e" // orange
+                        stroke="#ff7f0e"
                         strokeWidth={2}
                         dot={false}
                         name="Consumed"
@@ -91,19 +89,18 @@ export default function CalorieTrackingCharts({ data }: Props) {
                   </LineChart>
                </ResponsiveContainer>
             </div>
-         </div>
+         </section>
 
-         {/* ✅ Delta chart */}
-         <div>
-            <h3 style={{ margin: '0 0 10px' }}>
+         {/* Delta */}
+         <section>
+            <h3 className="text-lg font-semibold text-slate-900">
                Daily Delta (Consumed − Target)
             </h3>
-            <p style={{ marginTop: 0, opacity: 0.75 }}>
-               Negative bars mean you were under target; positive means over
-               target.
+            <p className="mt-1 text-sm text-slate-600">
+               Negative bars mean under target; positive means over target.
             </p>
 
-            <div style={{ width: '100%', height: 320 }}>
+            <div className="mt-4 h-[320px] w-full">
                <ResponsiveContainer>
                   <BarChart
                      data={chartData}
@@ -120,18 +117,17 @@ export default function CalorieTrackingCharts({ data }: Props) {
                      <ReferenceLine y={0} />
 
                      <Bar dataKey="delta" name="Delta">
-                        {/* ✅ Color bar based on sign */}
                         {chartData.map((row, idx) => (
                            <Cell
                               key={`cell-${idx}`}
-                              fill={row.delta >= 0 ? '#2ca02c' : '#d62728'} // green if over, red if under
+                              fill={row.delta >= 0 ? '#2ca02c' : '#d62728'}
                            />
                         ))}
                      </Bar>
                   </BarChart>
                </ResponsiveContainer>
             </div>
-         </div>
+         </section>
       </div>
    );
 }

@@ -1,30 +1,6 @@
-import OpenAI from 'openai';
+import axios from 'axios';
 import { z } from 'zod';
-import { zodTextFormat } from 'openai/helpers/zod';
 
-const openAIClient = new OpenAI({
-   apiKey: process.env.OPENAI_API_KEY,
-   timeout: 60_000,
-   maxRetries: 2,
-});
-
-export type GenerateTextOptions = {
-   model?: string;
-   prompt: string;
-   instructions?: string;
-   temperature?: number;
-   maxTokens?: number;
-   previousResponseId?: string;
-   messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
-};
-
-export type GenerateTextResult = {
-   id: string;
-   text: string;
-   droppedThread?: boolean;
-};
-
-// ---- Nutrition Plan Schema (Plan A/B/C) ----
 const NutritionPlanSchema = z.object({
    dailyCalories: z.number().int().min(1200).max(3500),
    mealTargets: z.object({
@@ -51,50 +27,85 @@ const NutritionPlanSchema = z.object({
       )
       .length(3),
 });
+
 export type NutritionPlanJson = z.infer<typeof NutritionPlanSchema>;
 
-// helpers
-function extractOutputText(resp: any): string {
-   if (resp?.output_text) return resp.output_text;
-   const out = resp?.output ?? [];
-   const texts: string[] = [];
-   for (const item of out) {
-      if (item?.type === 'message') {
-         for (const c of item.content ?? []) {
-            if (c?.type === 'output_text' && typeof c.text === 'string') {
-               texts.push(c.text);
-            }
-         }
-      }
-   }
-   return texts.join('\n').trim();
-}
+export type GenerateTextOptions = {
+   model?: string;
+   prompt: string;
+   instructions?: string;
+   temperature?: number;
+   maxTokens?: number;
+   previousResponseId?: string;
+   messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+};
+
+export type GenerateTextResult = {
+   id: string;
+   text: string;
+   droppedThread?: boolean;
+};
+
 function extractJsonFromText(text: string) {
    const start = text.indexOf('{');
    const end = text.lastIndexOf('}');
-   if (start === -1 || end === -1 || end <= start)
+   if (start === -1 || end === -1 || end <= start) {
       throw new Error('No JSON found in model output');
+   }
    return JSON.parse(text.slice(start, end + 1));
 }
-function prevNotFound(e: any) {
-   const msg =
-      e?.message ||
-      e?.error?.message ||
-      (typeof e?.toString === 'function' ? e.toString() : '');
-   return (
-      e?.status === 400 && /Previous response with id .* not found/i.test(msg)
+
+function openRouterHeaders() {
+   const h: Record<string, string> = {
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY || ''}`,
+      'Content-Type': 'application/json',
+   };
+
+   if (process.env.OPENROUTER_SITE_URL)
+      h['HTTP-Referer'] = process.env.OPENROUTER_SITE_URL;
+   if (process.env.OPENROUTER_APP_NAME)
+      h['X-Title'] = process.env.OPENROUTER_APP_NAME;
+
+   return h;
+}
+
+async function chatCompletions(args: {
+   model: string;
+   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+   temperature: number;
+   maxTokens: number;
+}) {
+   if (!process.env.OPENROUTER_API_KEY) {
+      const err: any = new Error('Missing OPENROUTER_API_KEY in environment');
+      err.status = 500;
+      throw err;
+   }
+
+   const { data } = await axios.post(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+         model: args.model,
+         messages: args.messages,
+         temperature: args.temperature,
+         max_tokens: Math.max(16, Math.floor(args.maxTokens ?? 200)),
+      },
+      { headers: openRouterHeaders(), timeout: 60_000 }
    );
+
+   const text: string = data?.choices?.[0]?.message?.content ?? '';
+   const id: string = data?.id ?? `or_${Date.now()}`;
+
+   return { id, text, raw: data };
 }
 
 export const llmClient = {
-   // ---- Normal chat/text with history ----
    async generateText({
-      model = 'gpt-4o-mini',
+      model = process.env.OPENROUTER_MODEL ||
+         'meta-llama/llama-3.1-8b-instruct:free',
       prompt,
       instructions,
       temperature = 0.2,
       maxTokens = 200,
-      previousResponseId,
       messages,
    }: GenerateTextOptions): Promise<GenerateTextResult> {
       const inputMessages =
@@ -102,87 +113,72 @@ export const llmClient = {
             ? messages
             : [
                  ...(instructions
-                    ? [{ role: 'system', content: instructions }]
+                    ? [{ role: 'system' as const, content: instructions }]
                     : []),
-                 { role: 'user', content: prompt },
+                 { role: 'user' as const, content: prompt },
               ];
 
-      try {
-         const resp = await openAIClient.responses.create({
-            model,
-            input: inputMessages,
-            temperature,
-            max_output_tokens: maxTokens,
-            ...(previousResponseId
-               ? { previous_response_id: previousResponseId }
-               : {}),
-            store: false,
-         });
+      const resp = await chatCompletions({
+         model,
+         messages: inputMessages,
+         temperature,
+         maxTokens,
+      });
 
-         return { id: resp.id, text: extractOutputText(resp) };
-      } catch (e: any) {
-         if (previousResponseId && prevNotFound(e)) {
-            const resp = await openAIClient.responses.create({
-               model,
-               input: inputMessages,
-               temperature,
-               max_output_tokens: maxTokens,
-               store: false,
-            });
-            return {
-               id: resp.id,
-               text: extractOutputText(resp),
-               droppedThread: true,
-            };
-         }
-         throw e;
-      }
+      return { id: resp.id, text: resp.text };
    },
 
-   // ---- Structured nutrition plan ----
    async generateNutritionPlan(input: {
       model: string;
       prompt: string;
       instructions?: string;
       maxTokens?: number;
    }): Promise<{ id: string; json: NutritionPlanJson; rawText: string }> {
-      const responsesAny = openAIClient.responses as unknown as {
-         parse?: (args: any) => Promise<any>;
-      };
+      const model =
+         input.model ||
+         process.env.OPENROUTER_MODEL ||
+         'meta-llama/llama-3.1-8b-instruct:free';
 
-      if (typeof responsesAny.parse === 'function') {
-         const resp = await responsesAny.parse({
-            model: input.model,
-            input: [
-               ...(input.instructions
-                  ? [{ role: 'system', content: input.instructions }]
-                  : []),
-               { role: 'user', content: input.prompt },
-            ],
-            text: {
-               format: zodTextFormat(NutritionPlanSchema, 'nutrition_plan'),
-            },
-            max_output_tokens: input.maxTokens ?? 900,
-            store: false,
-         });
-         return {
-            id: (resp as any).id,
-            json: (resp as any).output_parsed as NutritionPlanJson,
-            rawText: extractOutputText(resp),
-         };
+      const strictPrompt = `
+         Return ONLY valid JSON (no markdown, no commentary).
+         The JSON must match this shape:
+         {
+           "dailyCalories": number (1200-3500),
+           "mealTargets": { "breakfast": number, "snack1": number, "lunch": number, "snack2": number, "dinner": number },
+           "plans": [
+             { "key": "A", "meals": { "breakfast": string[], "snack1": string[], "lunch": string[], "snack2": string[], "dinner": string[], "substitutions": string[], "conditionNotes": string } },
+             { "key": "B", "meals": { ... } },
+             { "key": "C", "meals": { ... } }
+           ]
+         }
+         USER REQUEST:
+         ${input.prompt}
+         `.trim();
+
+      const messages = [
+         ...(input.instructions
+            ? [{ role: 'system' as const, content: input.instructions }]
+            : []),
+         { role: 'user' as const, content: strictPrompt },
+      ];
+
+      const resp = await chatCompletions({
+         model,
+         messages,
+         temperature: 0.2,
+         maxTokens: input.maxTokens ?? 900,
+      });
+
+      const rawText = (resp.text || '').trim();
+
+      let parsed: any;
+      try {
+         parsed = JSON.parse(rawText);
+      } catch {
+         parsed = extractJsonFromText(rawText);
       }
 
-      // Fallback
-      const resp = await openAIClient.responses.create({
-         model: input.model,
-         input: input.prompt,
-         instructions: input.instructions,
-         max_output_tokens: input.maxTokens ?? 900,
-         store: false,
-      });
-      const rawText = extractOutputText(resp);
-      const maybeJson = extractJsonFromText(rawText);
-      const json = NutritionPlanSchema.parse(maybeJson);
+      const json = NutritionPlanSchema.parse(parsed);
       return { id: resp.id, json, rawText };
    },
 };

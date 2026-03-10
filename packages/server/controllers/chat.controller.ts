@@ -1,5 +1,5 @@
 import type { RequestHandler } from 'express';
-import { chatService } from '../services/chat.service';
+import { generateTextOpenRouter } from '../services/chat.service';
 import z from 'zod';
 
 const chatSchema = z.object({
@@ -25,16 +25,28 @@ export const sendMessage: RequestHandler = async (req, res) => {
       const { prompt, conversationId } = parsed.data;
       const convId = conversationId ?? newId();
 
-      const response = await chatService.sendMessage(prompt, convId);
+      const response = await generateTextOpenRouter({
+         messages: [
+            {
+               role: 'system',
+               content: 'You are a helpful nutrition assistant for NutriFit.',
+            },
+            {
+               role: 'user',
+               content: prompt,
+            },
+         ],
+         temperature: 0.2,
+         maxTokens: 200,
+      });
 
       res.status(200).json({
          id: response.id,
-         message: response.message,
+         message: response.text,
          conversationId: convId,
       });
-      return;
-   } catch {
+   } catch (err) {
+      console.error(err);
       res.status(500).json({ error: 'Failed to generate a response.' });
-      return;
    }
 };

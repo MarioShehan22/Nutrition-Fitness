@@ -9,8 +9,8 @@ import {
 import { apiErrorMessage } from '../api/http';
 
 type MealSlot = 'breakfast' | 'snack1' | 'lunch' | 'snack2' | 'dinner';
-
 type MealStatus = 'planned' | 'done' | 'skipped';
+
 function isoDate(d = new Date()) {
    return d.toISOString().slice(0, 10);
 }
@@ -24,7 +24,6 @@ function normalizeSlot(slot: string): MealSlot {
       return 'snack2';
    if (s.includes('lunch')) return 'lunch';
    if (s.includes('dinner')) return 'dinner';
-   // fallback: try exact match
    if (['breakfast', 'snack1', 'lunch', 'snack2', 'dinner'].includes(s))
       return s as MealSlot;
    return 'lunch';
@@ -43,10 +42,8 @@ export default function TodayPage() {
    const waterTarget = daily?.water?.targetMl ?? 2000;
 
    const meals = useMemo(() => {
-      // if today.meals is already an array, keep it
       if (Array.isArray(today?.meals)) return today.meals;
 
-      // if today.meals is an object like { breakfast: [...], snack1: [...] }
       const obj = today?.meals;
       if (obj && typeof obj === 'object') {
          const slots: MealSlot[] = [
@@ -62,7 +59,6 @@ export default function TodayPage() {
             title: slot,
          }));
       }
-
       return [];
    }, [today]);
 
@@ -87,10 +83,10 @@ export default function TodayPage() {
       // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [date]);
 
-   async function setMeal(slot: MealSlot, status: MealStatus, notes?: string) {
+   async function setMeal(slot: MealSlot, status: MealStatus) {
       setError('');
       try {
-         await updateMealStatus({ userId, date, slot, status, notes });
+         await updateMealStatus({ userId, date, slot, status });
          const d = await getDailyLog(userId, date);
          setDaily(d);
       } catch (e) {
@@ -101,7 +97,7 @@ export default function TodayPage() {
    async function addWaterQuick(amountMl: number) {
       setError('');
       try {
-         await addWater({ userId, date, ml: amountMl }); // ✅ only this
+         await addWater({ userId, date, ml: amountMl });
          const d = await getDailyLog(userId, date);
          setDaily(d);
       } catch (e) {
@@ -121,120 +117,154 @@ export default function TodayPage() {
    }
 
    return (
-      <div style={{ padding: 16, maxWidth: 980, margin: '0 auto' }}>
-         <div
-            style={{
-               display: 'flex',
-               gap: 12,
-               alignItems: 'center',
-               flexWrap: 'wrap',
-            }}
-         >
-            <h2 style={{ margin: 0 }}>Today</h2>
-
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-               <label>Date</label>
-               <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-               />
-            </div>
-
-            <button onClick={refresh} disabled={loading}>
-               {loading ? 'Refreshing...' : 'Refresh'}
-            </button>
-         </div>
-
-         {error && (
-            <div
-               style={{
-                  marginTop: 12,
-                  padding: 12,
-                  border: '1px solid #f3b',
-                  borderRadius: 8,
-               }}
-            >
-               <b>Error:</b> {error}
-            </div>
-         )}
-
-         <div
-            style={{
-               marginTop: 16,
-               padding: 12,
-               border: '1px solid #ddd',
-               borderRadius: 10,
-            }}
-         >
+      <div className="mx-auto w-full max-w-5xl px-4 py-6">
+         {/* Header */}
+         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-               <b>User:</b> {userId}
+               <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                  Today
+               </h1>
+               <p className="text-sm text-slate-600">
+                  Track meals & water for the selected date.
+               </p>
             </div>
-            <div>
-               <b>Plan key:</b> {today?.key ?? '—'}
-            </div>
-            <div>
-               <b>Plan id:</b> {today?.planId ?? '—'}
-            </div>
-            <div>
-               <b>Daily calories:</b> {today?.dailyCalories ?? '—'}
-            </div>
-         </div>
 
-         <div
-            style={{
-               marginTop: 16,
-               padding: 12,
-               border: '1px solid #ddd',
-               borderRadius: 10,
-            }}
-         >
-            <h3 style={{ marginTop: 0 }}>Water</h3>
-            <div
-               style={{
-                  display: 'flex',
-                  gap: 10,
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-               }}
-            >
-               <div>
-                  <b>{waterTotal}</b> ml / <b>{waterTarget}</b> ml
+            <div className="flex flex-wrap items-center gap-2">
+               <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                  <span className="text-xs font-semibold text-slate-600">
+                     Date
+                  </span>
+                  <input
+                     type="date"
+                     value={date}
+                     onChange={(e) => setDate(e.target.value)}
+                     className="bg-transparent text-sm text-slate-900 outline-none"
+                  />
                </div>
-               <button onClick={() => addWaterQuick(250)}>+250 ml</button>
-               <button onClick={() => addWaterQuick(500)}>+500 ml</button>
+
                <button
-                  onClick={() => {
-                     const v = prompt(
-                        'Set water target (ml)',
-                        String(waterTarget)
-                     );
-                     if (!v) return;
-                     const n = Number(v);
-                     if (Number.isFinite(n) && n > 0) changeWaterTarget(n);
-                  }}
+                  onClick={refresh}
+                  disabled={loading}
+                  className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                >
-                  Set target
+                  {loading ? 'Refreshing...' : 'Refresh'}
                </button>
             </div>
          </div>
 
-         <div style={{ marginTop: 16 }}>
-            <h3>Meals</h3>
+         {/* Error */}
+         {error && (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+               <span className="font-semibold">Error:</span> {error}
+            </div>
+         )}
+
+         {/* Summary cards */}
+         <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+               <div className="text-sm font-semibold text-slate-900">
+                  Plan summary
+               </div>
+               <div className="mt-3 grid gap-2 text-sm text-slate-700">
+                  <Row label="User" value={userId} />
+                  <Row label="Plan key" value={today?.key ?? '—'} />
+                  <Row label="Plan id" value={today?.planId ?? '—'} />
+                  <Row
+                     label="Daily calories"
+                     value={today?.dailyCalories ?? '—'}
+                  />
+               </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+               <div className="flex items-start justify-between gap-3">
+                  <div>
+                     <div className="text-sm font-semibold text-slate-900">
+                        Water
+                     </div>
+                     <div className="mt-1 text-sm text-slate-600">
+                        <span className="font-semibold text-slate-900">
+                           {waterTotal}
+                        </span>{' '}
+                        ml <span className="text-slate-400">/</span>{' '}
+                        <span className="font-semibold text-slate-900">
+                           {waterTarget}
+                        </span>{' '}
+                        ml
+                     </div>
+                  </div>
+
+                  <div className="text-xs text-slate-500">
+                     {Math.min(
+                        100,
+                        Math.round(
+                           (waterTotal / Math.max(1, waterTarget)) * 100
+                        )
+                     )}
+                     % complete
+                  </div>
+               </div>
+
+               <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                     onClick={() => addWaterQuick(250)}
+                     className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+                  >
+                     +250 ml
+                  </button>
+                  <button
+                     onClick={() => addWaterQuick(500)}
+                     className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+                  >
+                     +500 ml
+                  </button>
+                  <button
+                     onClick={() => {
+                        const v = prompt(
+                           'Set water target (ml)',
+                           String(waterTarget)
+                        );
+                        if (!v) return;
+                        const n = Number(v);
+                        if (Number.isFinite(n) && n > 0) changeWaterTarget(n);
+                     }}
+                     className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+                  >
+                     Set target
+                  </button>
+               </div>
+
+               {/* Progress bar */}
+               <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div
+                     className="h-full rounded-full bg-emerald-500"
+                     style={{
+                        width: `${Math.min(100, (waterTotal / Math.max(1, waterTarget)) * 100)}%`,
+                     }}
+                  />
+               </div>
+            </div>
+         </div>
+
+         {/* Meals */}
+         <div className="mt-8">
+            <div className="flex items-end justify-between">
+               <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                  Meals
+               </h2>
+               <span className="text-sm text-slate-500">{date}</span>
+            </div>
 
             {meals.length === 0 ? (
-               <div
-                  style={{
-                     padding: 12,
-                     border: '1px solid #ddd',
-                     borderRadius: 10,
-                  }}
-               >
-                  No meals returned from <code>/today</code>. Check the
-                  enrollment window / userId.
+               <div className="mt-3 rounded-3xl border border-slate-200 bg-white p-5 text-sm text-slate-700 shadow-sm">
+                  No meals returned from{' '}
+                  <code className="rounded bg-slate-100 px-1 py-0.5">
+                     /today
+                  </code>
+                  . Check enrollment window / userId.
                </div>
             ) : (
-               <div style={{ display: 'grid', gap: 12 }}>
+               <div className="mt-4 grid gap-4 md:grid-cols-2">
                   {meals.map((m: any, idx: number) => {
                      const slot: MealSlot = normalizeSlot(
                         m.slot || m.mealType || m.type || ''
@@ -245,105 +275,69 @@ export default function TodayPage() {
                      return (
                         <div
                            key={`${slot}-${idx}`}
-                           style={{
-                              border: '1px solid #ddd',
-                              borderRadius: 10,
-                              padding: 12,
-                           }}
+                           className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
                         >
-                           <div
-                              style={{
-                                 display: 'flex',
-                                 justifyContent: 'space-between',
-                                 gap: 10,
-                                 flexWrap: 'wrap',
-                              }}
-                           >
+                           <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
-                                 <div style={{ fontSize: 12, opacity: 0.7 }}>
+                                 <div className="text-xs font-semibold text-slate-500">
                                     {slot.toUpperCase()}
                                  </div>
-                                 <div style={{ fontSize: 18, fontWeight: 600 }}>
+                                 <div className="mt-1 text-lg font-semibold text-slate-900">
                                     {title}
                                  </div>
                               </div>
-                              <div>
-                                 <select
-                                    value={state?.status ?? 'planned'}
-                                    onChange={(e) =>
-                                       setMeal(
-                                          slot,
-                                          e.target.value as MealStatus,
-                                          state?.notes
-                                       )
-                                    }
-                                 >
-                                    <option value="planned">Planned</option>
-                                    <option value="done">Consumed</option>
-                                    <option value="skipped">Skipped</option>
-                                 </select>
-                              </div>
+
+                              <select
+                                 value={state?.status ?? 'planned'}
+                                 onChange={(e) =>
+                                    setMeal(slot, e.target.value as MealStatus)
+                                 }
+                                 className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm outline-none hover:bg-slate-50"
+                              >
+                                 <option value="planned">Planned</option>
+                                 <option value="done">Consumed</option>
+                                 <option value="skipped">Skipped</option>
+                              </select>
                            </div>
 
-                           {!!m.items?.length && (
-                              <ul style={{ marginTop: 8 }}>
+                           {!!m.items?.length ? (
+                              <ul className="mt-4 space-y-2 text-sm text-slate-700">
                                  {m.items.map((it: any, i: number) => (
-                                    <li key={i}>
-                                       {it.name ?? it}{' '}
-                                       {it.amount ? `- ${it.amount}` : ''}
+                                    <li
+                                       key={i}
+                                       className="flex items-start justify-between gap-3"
+                                    >
+                                       <span className="leading-relaxed">
+                                          {it.name ?? it}
+                                       </span>
+                                       {it.amount ? (
+                                          <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                                             {it.amount}
+                                          </span>
+                                       ) : null}
                                     </li>
                                  ))}
                               </ul>
-                           )}
-
-                           <div style={{ marginTop: 10 }}>
-                              <textarea
-                                 placeholder="Notes..."
-                                 value={state?.notes ?? ''}
-                                 onChange={(e) => {
-                                    const notes = e.target.value;
-                                    // local UI only; we save on button click to avoid spamming PATCH
-                                    setDaily((prev: any) => ({
-                                       ...(prev || {}),
-                                       meals: {
-                                          ...(prev?.meals || {}),
-                                          [slot]: {
-                                             ...(prev?.meals?.[slot] || {}),
-                                             notes,
-                                          },
-                                       },
-                                    }));
-                                 }}
-                                 rows={2}
-                                 style={{ width: '100%' }}
-                              />
-                              <div
-                                 style={{
-                                    display: 'flex',
-                                    gap: 8,
-                                    marginTop: 6,
-                                 }}
-                              >
-                                 <button
-                                    onClick={() =>
-                                       setMeal(
-                                          slot,
-                                          (state?.status ??
-                                             'planned') as MealStatus,
-                                          daily?.meals?.[slot]?.notes
-                                       )
-                                    }
-                                 >
-                                    Save notes
-                                 </button>
+                           ) : (
+                              <div className="mt-4 text-sm text-slate-500">
+                                 No items listed for this meal.
                               </div>
-                           </div>
+                           )}
                         </div>
                      );
                   })}
                </div>
             )}
          </div>
+      </div>
+   );
+}
+
+function Row({ label, value }: { label: string; value: any }) {
+   return (
+      <div className="flex items-center justify-between gap-4">
+         <span className="text-slate-500">{label}</span>
+         <span className="font-semibold text-slate-900">{String(value)}</span>
       </div>
    );
 }

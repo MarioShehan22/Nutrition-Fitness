@@ -11,12 +11,15 @@ type Props = {
    onSubmit: (data: ChatFormData) => void;
 };
 
-const ChatInput = ({ onSubmit }: Props) => {
-   const { register, handleSubmit, reset, formState } = useForm<ChatFormData>();
+export default function ChatInput({ onSubmit }: Props) {
+   const { register, handleSubmit, reset, formState } = useForm<ChatFormData>({
+      mode: 'onChange',
+      defaultValues: { prompt: '' },
+   });
 
    const submit = handleSubmit((data) => {
+      onSubmit({ prompt: data.prompt });
       reset({ prompt: '' });
-      onSubmit(data);
    });
 
    const handleKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
@@ -30,23 +33,26 @@ const ChatInput = ({ onSubmit }: Props) => {
       <form
          onSubmit={submit}
          onKeyDown={handleKeyDown}
-         className="flex flex-col gap-2 items-end border-2 p-4 rounded-3xl"
+         className="flex items-end gap-3 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm"
       >
          <textarea
             {...register('prompt', {
                required: true,
-               validate: (data) => data.trim().length > 0,
+               validate: (v) => v.trim().length > 0,
             })}
-            autoFocus
-            className="w-full border-0 focus:outline-0 resize-none"
-            placeholder="Ask anything"
+            rows={1}
+            className="min-h-[44px] w-full resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+            placeholder="Ask anything…"
             maxLength={1000}
          />
-         <Button disabled={!formState.isValid} className="rounded-full w-9 h-9">
+
+         <Button
+            type="submit"
+            disabled={!formState.isValid || formState.isSubmitting}
+            className="h-10 w-10 rounded-full p-0"
+         >
             <FaArrowUp />
          </Button>
       </form>
    );
-};
-
-export default ChatInput;
+}

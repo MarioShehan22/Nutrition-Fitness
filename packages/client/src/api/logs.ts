@@ -40,12 +40,13 @@ export async function setWaterTarget(payload: {
 export async function logManual(payload: {
    userId: string;
    date: string;
-   slot: 'breakfast' | 'snack1' | 'lunch' | 'snack2' | 'dinner';
-   name: string;
-   calories?: number;
-   protein?: number;
-   carbs?: number;
-   fat?: number;
+   entries: Array<{
+      foodName: string;
+      calories: number;
+      portion?: string;
+      time?: string;
+      macros?: { protein_g?: number; carbs_g?: number; fat_g?: number };
+   }>;
 }) {
    const { data } = await http.post('/api/logs/manual', payload);
    return data;
